@@ -236,6 +236,18 @@ h1 {
   line-height: 1.5;
 }
 
+.modal a {
+  color: var(--indigo-deep);
+  text-decoration: underline;
+  text-decoration-color: var(--violet);
+  text-underline-offset: 3px;
+}
+
+.modal a:hover {
+  color: var(--violet-deep);
+  text-decoration-thickness: 2px;
+}
+
 .modal form { margin-top: 20px; justify-content: center; }
 
 .close-btn {
