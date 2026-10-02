@@ -8,6 +8,31 @@ const list = document.getElementById('waitlist');
 const count = document.getElementById('count');
 const empty = document.getElementById('empty');
 const joinWait = document.getElementById('join-wait');
+const staffBtn = document.getElementById('staff-btn');
+
+// Saved in this browser only. Wrapped in try/catch because some browsers block storage.
+function readStore(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStore(key, value) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage unavailable; things still work for this visit.
+  }
+}
+
+// Secret keys for the entries this browser added: { [id]: token }.
+// Only the holder of an entry's key (or staff) can remove it.
+let myTokens = readStore('waitlist-tokens', {});
+let adminPassword = readStore('waitlist-admin', null);
 
 function showMessage(text, isError = false) {
   message.textContent = text;
@@ -60,16 +85,37 @@ function render(entries) {
     time.textContent = `joined ${formatTime(entry.joinedAt)}`;
 
     details.append(wait, time);
+    li.append(pos, name, details);
 
-    const remove = document.createElement('button');
-    remove.className = 'remove';
-    remove.textContent = 'Remove';
-    remove.addEventListener('click', () => removeEntry(entry));
+    const isMine = Boolean(myTokens[entry.id]);
+    if (isMine) {
+      li.classList.add('mine');
+      const you = document.createElement('span');
+      you.className = 'you';
+      you.textContent = 'You';
+      name.append(' ', you);
+    }
 
-    li.append(pos, name, details, remove);
+    if (isMine || adminPassword) {
+      const remove = document.createElement('button');
+      remove.className = 'remove';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => removeEntry(entry));
+      li.append(remove);
+    }
+
     list.append(li);
   });
   seenIds = new Set(entries.map((e) => e.id));
+
+  // Forget keys for entries that are no longer on the list.
+  const stillHere = Object.fromEntries(
+    Object.entries(myTokens).filter(([id]) => seenIds.has(Number(id)))
+  );
+  if (Object.keys(stillHere).length !== Object.keys(myTokens).length) {
+    myTokens = stillHere;
+    writeStore('waitlist-tokens', myTokens);
+  }
   count.textContent = entries.length;
   joinWait.textContent = entries.length
     ? `If you join now: ${formatWait(entries.length)} (${entries.length} ahead of you)`
@@ -88,9 +134,16 @@ async function load() {
 
 async function removeEntry(entry) {
   if (!confirm(`Remove ${entry.name} from the wait list?`)) return;
-  const res = await fetch(`/api/waitlist/${entry.id}`, { method: 'DELETE' });
-  if (res.ok || res.status === 404) showMessage(`${entry.name} was removed.`);
-  else showMessage('Could not remove that name.', true);
+  const headers = {};
+  if (myTokens[entry.id]) headers['X-Remove-Token'] = myTokens[entry.id];
+  if (adminPassword) headers['X-Admin-Password'] = adminPassword;
+  const res = await fetch(`/api/waitlist/${entry.id}`, { method: 'DELETE', headers });
+  if (res.ok || res.status === 404) {
+    showMessage(`${entry.name} was removed.`);
+  } else {
+    const { error } = await res.json().catch(() => ({}));
+    showMessage(error || 'Could not remove that name.', true);
+  }
   load();
 }
 
@@ -104,6 +157,9 @@ form.addEventListener('submit', async (e) => {
     body: JSON.stringify({ name }),
   });
   if (res.ok) {
+    const entry = await res.json();
+    myTokens[entry.id] = entry.removeToken;
+    writeStore('waitlist-tokens', myTokens);
     input.value = '';
     showMessage(`Thanks, ${name}! You're on the list.`);
     sparkleBurst(form.querySelector('button'));
@@ -121,7 +177,37 @@ findMe.addEventListener('click', (e) => {
   if (e.target === findMe) findMe.close();
 });
 
-const SPARKLE_CHARS = ['✦', '✧', '★', '✨', '·'];
+// Staff mode: Paul logs in with the staff password to remove anyone.
+function updateStaffButton() {
+  staffBtn.textContent = adminPassword ? 'Staff log out' : 'Staff';
+}
+
+staffBtn.addEventListener('click', async () => {
+  if (adminPassword) {
+    adminPassword = null;
+    writeStore('waitlist-admin', null);
+  } else {
+    const password = prompt('Staff password');
+    if (!password) return;
+    const res = await fetch('/api/admin/check', {
+      method: 'POST',
+      headers: { 'X-Admin-Password': password },
+    });
+    if (!res.ok) {
+      showMessage('Wrong staff password.', true);
+      return;
+    }
+    adminPassword = password;
+    writeStore('waitlist-admin', password);
+    showMessage('Staff mode on — you can remove anyone.');
+  }
+  updateStaffButton();
+  load();
+});
+
+updateStaffButton();
+
+const SPARKLE_CHARS = ['✦', '✧', '·'];
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function randomColor() {
@@ -138,9 +224,9 @@ function makeSparkles(count) {
     s.style.left = `${Math.random() * 100}%`;
     s.style.top = `${Math.random() * 100}%`;
     s.style.setProperty('--c', randomColor());
-    s.style.setProperty('--s', `${10 + Math.random() * 16}px`);
-    s.style.setProperty('--d', `${3 + Math.random() * 4}s`);
-    s.style.setProperty('--delay', `${-Math.random() * 7}s`);
+    s.style.setProperty('--s', `${7 + Math.random() * 7}px`);
+    s.style.setProperty('--d', `${7 + Math.random() * 5}s`);
+    s.style.setProperty('--delay', `${-Math.random() * 12}s`);
     layer.append(s);
   }
 }
@@ -167,7 +253,7 @@ function sparkleBurst(el) {
   }
 }
 
-if (!reduceMotion) makeSparkles(window.innerWidth < 600 ? 18 : 32);
+if (!reduceMotion) makeSparkles(window.innerWidth < 600 ? 6 : 12);
 
 load();
 setInterval(load, 10000);

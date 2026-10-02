@@ -1,5 +1,9 @@
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
+
+// Staff password lets Paul remove anyone. Unset means nobody can remove other people.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
 const app = express();
 app.use(express.json());
@@ -24,6 +28,7 @@ if (process.env.DATABASE_URL) {
           name TEXT NOT NULL,
           joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`);
+      await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS remove_token TEXT');
     },
     async list() {
       const { rows } = await pool.query(
@@ -31,12 +36,16 @@ if (process.env.DATABASE_URL) {
       );
       return rows;
     },
-    async add(name) {
+    async add(name, removeToken) {
       const { rows } = await pool.query(
-        'INSERT INTO waitlist (name) VALUES ($1) RETURNING id, name, joined_at AS "joinedAt"',
-        [name]
+        'INSERT INTO waitlist (name, remove_token) VALUES ($1, $2) RETURNING id, name, joined_at AS "joinedAt"',
+        [name, removeToken]
       );
       return rows[0];
+    },
+    async getRemoveToken(id) {
+      const { rows } = await pool.query('SELECT remove_token FROM waitlist WHERE id = $1', [id]);
+      return rows.length ? rows[0].remove_token : undefined;
     },
     async remove(id) {
       const { rowCount } = await pool.query('DELETE FROM waitlist WHERE id = $1', [id]);
@@ -50,12 +59,16 @@ if (process.env.DATABASE_URL) {
   store = {
     async init() {},
     async list() {
-      return entries;
+      return entries.map(({ id, name, joinedAt }) => ({ id, name, joinedAt }));
     },
-    async add(name) {
-      const entry = { id: nextId++, name, joinedAt: new Date().toISOString() };
+    async add(name, removeToken) {
+      const entry = { id: nextId++, name, joinedAt: new Date().toISOString(), removeToken };
       entries.push(entry);
-      return entry;
+      return { id: entry.id, name, joinedAt: entry.joinedAt };
+    },
+    async getRemoveToken(id) {
+      const entry = entries.find((e) => e.id === id);
+      return entry ? entry.removeToken : undefined;
     },
     async remove(id) {
       const before = entries.length;
@@ -64,6 +77,22 @@ if (process.env.DATABASE_URL) {
     },
   };
 }
+
+// Constant-time string comparison, so response timing doesn't leak secrets.
+function safeEqual(a, b) {
+  const hash = (v) => crypto.createHash('sha256').update(String(v)).digest();
+  return crypto.timingSafeEqual(hash(a), hash(b));
+}
+
+function isAdmin(req) {
+  const given = req.get('X-Admin-Password');
+  return Boolean(ADMIN_PASSWORD && given && safeEqual(given, ADMIN_PASSWORD));
+}
+
+app.post('/api/admin/check', (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ error: 'Wrong password.' });
+  res.status(204).end();
+});
 
 app.get('/api/waitlist', async (req, res, next) => {
   try {
@@ -77,7 +106,10 @@ app.post('/api/waitlist', async (req, res, next) => {
   try {
     const name = String(req.body?.name ?? '').trim().slice(0, 60);
     if (!name) return res.status(400).json({ error: 'Please enter a name.' });
-    res.status(201).json(await store.add(name));
+    // The token is only ever sent to the person who joined; the public list never includes it.
+    const removeToken = crypto.randomUUID();
+    const entry = await store.add(name, removeToken);
+    res.status(201).json({ ...entry, removeToken });
   } catch (err) {
     next(err);
   }
@@ -87,6 +119,15 @@ app.delete('/api/waitlist/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id.' });
+    const token = await store.getRemoveToken(id);
+    if (token === undefined) return res.status(404).json({ error: 'Not found.' });
+
+    const given = req.get('X-Remove-Token');
+    const ownsEntry = Boolean(token && given && safeEqual(given, token));
+    if (!ownsEntry && !isAdmin(req)) {
+      return res.status(403).json({ error: 'You can only remove your own name.' });
+    }
+
     const removed = await store.remove(id);
     if (!removed) return res.status(404).json({ error: 'Not found.' });
     res.status(204).end();
