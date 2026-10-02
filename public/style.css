@@ -46,7 +46,7 @@ body {
 
 @keyframes twinkle {
   0%, 100% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); }
-  50%      { opacity: 0.5; transform: translateY(-24px) scale(1) rotate(180deg); }
+  50%      { opacity: 0.55; transform: translateY(-24px) scale(1) rotate(180deg); }
 }
 
 @keyframes pulse-glow {
@@ -81,12 +81,11 @@ body {
 
 .sparkle {
   position: absolute;
-  /* Rainbow colour softened toward white so the stars stay in the background */
-  --soft: color-mix(in srgb, var(--c) 55%, white);
-  color: var(--soft);
+  /* Full rainbow colour, kept muted by the low opacity in the twinkle animation */
+  color: var(--c);
   font-size: var(--s);
   opacity: 0;
-  text-shadow: 0 0 6px color-mix(in srgb, var(--soft) 50%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--c) 40%, transparent);
   animation: twinkle var(--d) ease-in-out var(--delay) infinite;
 }
 

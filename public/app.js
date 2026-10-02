@@ -207,7 +207,7 @@ staffBtn.addEventListener('click', async () => {
 
 updateStaffButton();
 
-const SPARKLE_CHARS = ['✦', '✧', '★', '·'];
+const SPARKLE_CHARS = ['✦', '✧', '★'];
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function randomColor() {
@@ -223,8 +223,9 @@ function makeSparkles(count) {
     s.textContent = SPARKLE_CHARS[i % SPARKLE_CHARS.length];
     s.style.left = `${Math.random() * 100}%`;
     s.style.top = `${Math.random() * 100}%`;
-    s.style.setProperty('--c', randomColor());
-    s.style.setProperty('--s', `${9 + Math.random() * 13}px`);
+    // Go through the rainbow in order so every colour shows up evenly.
+    s.style.setProperty('--c', `var(${colors[i % colors.length]})`);
+    s.style.setProperty('--s', `${11 + Math.random() * 12}px`);
     s.style.setProperty('--d', `${4 + Math.random() * 5}s`);
     s.style.setProperty('--delay', `${-Math.random() * 9}s`);
     layer.append(s);
