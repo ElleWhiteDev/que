@@ -331,6 +331,42 @@ form button:active { transform: scale(0.96); }
 
 .waitlist li.mine { background: #f3ecff; }
 
+.waitlist li.called { background: #eafaf1; }
+
+.called-text { color: var(--green); }
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.call {
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--green);
+  border: 2px solid #bfeccf;
+  white-space: nowrap;
+}
+
+.call:hover { background: #eafaf1; }
+
+@keyframes ring {
+  0%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(-18deg); }
+  20%, 40% { transform: rotate(18deg); }
+  50%      { transform: rotate(0); }
+}
+
+.turn-bell {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 8px;
+  animation: ring 1.6s ease-in-out infinite;
+}
+
+.turn-modal h2 { font-size: 2rem; }
+
 .you {
   display: inline-block;
   padding: 0 8px;
@@ -458,14 +494,18 @@ form button:active { transform: scale(0.96); }
     display: grid;
     grid-template-columns: auto 1fr auto;
     grid-template-areas:
-      "pos name    remove"
-      "pos details remove";
+      "pos name    actions"
+      "pos details actions";
     column-gap: 12px;
     row-gap: 2px;
   }
   .position { grid-area: pos; }
   .name { grid-area: name; }
-  .remove { grid-area: remove; }
+  .actions {
+    grid-area: actions;
+    flex-direction: column;
+    justify-content: center;
+  }
   .details {
     grid-area: details;
     flex-direction: row;

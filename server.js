@@ -29,12 +29,17 @@ if (process.env.DATABASE_URL) {
           joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`);
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS remove_token TEXT');
+      await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS called_at TIMESTAMPTZ');
     },
     async list() {
       const { rows } = await pool.query(
-        'SELECT id, name, joined_at AS "joinedAt" FROM waitlist ORDER BY joined_at, id'
+        'SELECT id, name, joined_at AS "joinedAt", called_at AS "calledAt" FROM waitlist ORDER BY joined_at, id'
       );
       return rows;
+    },
+    async call(id) {
+      const { rowCount } = await pool.query('UPDATE waitlist SET called_at = NOW() WHERE id = $1', [id]);
+      return rowCount > 0;
     },
     async add(name, removeToken) {
       const { rows } = await pool.query(
@@ -59,10 +64,15 @@ if (process.env.DATABASE_URL) {
   store = {
     async init() {},
     async list() {
-      return entries.map(({ id, name, joinedAt }) => ({ id, name, joinedAt }));
+      return entries.map(({ id, name, joinedAt, calledAt }) => ({ id, name, joinedAt, calledAt }));
+    },
+    async call(id) {
+      const entry = entries.find((e) => e.id === id);
+      if (entry) entry.calledAt = new Date().toISOString();
+      return Boolean(entry);
     },
     async add(name, removeToken) {
-      const entry = { id: nextId++, name, joinedAt: new Date().toISOString(), removeToken };
+      const entry = { id: nextId++, name, joinedAt: new Date().toISOString(), calledAt: null, removeToken };
       entries.push(entry);
       return { id: entry.id, name, joinedAt: entry.joinedAt };
     },
@@ -130,6 +140,20 @@ app.delete('/api/waitlist/:id', async (req, res, next) => {
 
     const removed = await store.remove(id);
     if (!removed) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Staff only: tell someone it's their turn. Their page sees calledAt and pops up an alert.
+app.post('/api/waitlist/:id/call', async (req, res, next) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Staff only.' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id.' });
+    const called = await store.call(id);
+    if (!called) return res.status(404).json({ error: 'Not found.' });
     res.status(204).end();
   } catch (err) {
     next(err);

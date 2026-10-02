@@ -33,6 +33,9 @@ function writeStore(key, value) {
 // Only the holder of an entry's key (or staff) can remove it.
 let myTokens = readStore('waitlist-tokens', {});
 let adminPassword = readStore('waitlist-admin', null);
+// The calledAt time of each call this browser has already acknowledged: { [id]: calledAt }.
+// Staff pressing Call again gives a new calledAt, so the alert shows again.
+let seenCalls = readStore('waitlist-seen-calls', {});
 
 function showMessage(text, isError = false) {
   message.textContent = text;
@@ -77,8 +80,14 @@ function render(entries) {
     details.className = 'details';
 
     const wait = document.createElement('span');
-    wait.className = i === 0 ? 'wait next' : 'wait';
-    wait.textContent = formatWait(i);
+    if (entry.calledAt) {
+      li.classList.add('called');
+      wait.className = 'wait called-text';
+      wait.textContent = '🔔 Called to the booth!';
+    } else {
+      wait.className = i === 0 ? 'wait next' : 'wait';
+      wait.textContent = formatWait(i);
+    }
 
     const time = document.createElement('span');
     time.className = 'time';
@@ -96,13 +105,26 @@ function render(entries) {
       name.append(' ', you);
     }
 
+    const actions = document.createElement('span');
+    actions.className = 'actions';
+
+    if (adminPassword) {
+      const call = document.createElement('button');
+      call.className = 'call';
+      call.textContent = entry.calledAt ? '🔔 Call again' : '🔔 Call';
+      call.addEventListener('click', () => callEntry(entry));
+      actions.append(call);
+    }
+
     if (isMine || adminPassword) {
       const remove = document.createElement('button');
       remove.className = 'remove';
       remove.textContent = 'Remove';
       remove.addEventListener('click', () => removeEntry(entry));
-      li.append(remove);
+      actions.append(remove);
     }
+
+    if (actions.childElementCount) li.append(actions);
 
     list.append(li);
   });
@@ -116,6 +138,7 @@ function render(entries) {
     myTokens = stillHere;
     writeStore('waitlist-tokens', myTokens);
   }
+  checkMyTurn(entries);
   count.textContent = entries.length;
   joinWait.textContent = entries.length
     ? `If you join now: ${formatWait(entries.length)} (${entries.length} ahead of you)`
@@ -130,6 +153,74 @@ async function load() {
   } catch {
     showMessage('Could not load the wait list.', true);
   }
+}
+
+// ---------- "It's your turn" alert ----------
+
+const turnModal = document.getElementById('your-turn');
+const turnName = document.getElementById('your-turn-name');
+const pageTitle = document.title;
+let activeCall = null;
+
+function checkMyTurn(entries) {
+  const mine = entries.find(
+    (e) => myTokens[e.id] && e.calledAt && seenCalls[e.id] !== e.calledAt
+  );
+  if (!mine || (activeCall && activeCall.calledAt === mine.calledAt)) return;
+  activeCall = mine;
+  turnName.textContent = mine.name;
+  if (!turnModal.open) turnModal.showModal();
+  document.title = "🔔 It's your turn! – Paul Houston Massage";
+  if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
+  playChime();
+}
+
+turnModal.addEventListener('close', () => {
+  if (activeCall) {
+    seenCalls[activeCall.id] = activeCall.calledAt;
+    // Only keep acknowledgements for entries that are still ours.
+    seenCalls = Object.fromEntries(Object.entries(seenCalls).filter(([id]) => myTokens[id]));
+    writeStore('waitlist-seen-calls', seenCalls);
+    activeCall = null;
+  }
+  document.title = pageTitle;
+});
+
+// A short three-note chime. Browsers may block sound until the visitor has
+// tapped the page, so this is a bonus on top of the pop-up and vibration.
+function playChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [659.25, 783.99, 1046.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const start = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.3, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.5);
+    });
+  } catch {
+    // No sound available; the pop-up still shows.
+  }
+}
+
+async function callEntry(entry) {
+  const res = await fetch(`/api/waitlist/${entry.id}/call`, {
+    method: 'POST',
+    headers: { 'X-Admin-Password': adminPassword },
+  });
+  if (res.ok) {
+    showMessage(`Called ${entry.name} to the booth.`);
+  } else {
+    const { error } = await res.json().catch(() => ({}));
+    showMessage(error || `Could not call ${entry.name}.`, true);
+  }
+  load();
 }
 
 async function removeEntry(entry) {
@@ -199,7 +290,7 @@ staffBtn.addEventListener('click', async () => {
     }
     adminPassword = password;
     writeStore('waitlist-admin', password);
-    showMessage('Staff mode on — you can remove anyone.');
+    showMessage('Staff mode on — you can call or remove anyone.');
   }
   updateStaffButton();
   load();
@@ -257,4 +348,9 @@ function sparkleBurst(el) {
 if (!reduceMotion) makeSparkles(window.innerWidth < 600 ? 14 : 26);
 
 load();
-setInterval(load, 10000);
+// Check often so a called person sees their alert within a few seconds,
+// and right away when they come back to the tab or unlock their phone.
+setInterval(load, 4000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') load();
+});

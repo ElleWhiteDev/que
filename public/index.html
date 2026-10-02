@@ -18,6 +18,15 @@
     <button id="find-me-btn" class="find-me-btn" type="button">📍 Find me</button>
   </header>
 
+  <dialog id="your-turn" class="modal turn-modal" aria-labelledby="your-turn-title">
+    <div class="turn-bell" aria-hidden="true">🔔</div>
+    <h2 id="your-turn-title">It's your turn!</h2>
+    <p><strong id="your-turn-name"></strong>, please come to the massage booth now.</p>
+    <form method="dialog">
+      <button class="close-btn">On my way!</button>
+    </form>
+  </dialog>
+
   <dialog id="find-me" class="modal" aria-labelledby="find-me-title">
     <h2 id="find-me-title">Find me</h2>
     <p>Find me at <strong>Massage Envy</strong> in Hamburg or the <strong>Lexington Healing Arts Academy</strong>.</p>
