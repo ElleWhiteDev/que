@@ -388,6 +388,10 @@ form button:active { transform: scale(0.96); }
 
 .wait.called-text { color: var(--green-deep); }
 
+.waitlist li.on-way { background: #e3f0ff; }
+
+.on-way .wait.called-text { color: var(--blue-deep); }
+
 .actions {
   grid-area: actions;
   display: flex;

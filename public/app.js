@@ -75,7 +75,24 @@ function withIcon(el, icon, text) {
 // screen reader users off whatever button they were on.
 let lastRenderKey = '';
 
+// Which called people have replied "On my way!", so staff can be told when a new reply comes in.
+// Starts as null so replies that already existed on page load don't trigger a notice.
+let onTheWayIds = null;
+
+function noticeReplies(entries) {
+  const now = new Set(entries.filter((e) => e.ackedAt).map((e) => e.id));
+  if (onTheWayIds && adminPassword) {
+    const fresh = entries.filter((e) => now.has(e.id) && !onTheWayIds.has(e.id));
+    if (fresh.length) {
+      showMessage(`${fresh.map((e) => e.name).join(' and ')} ${fresh.length > 1 ? 'are' : 'is'} on the way!`);
+      playChime();
+    }
+  }
+  onTheWayIds = now;
+}
+
 function render(entries) {
+  noticeReplies(entries);
   const renderKey = JSON.stringify([entries, Boolean(adminPassword), Object.keys(myTokens)]);
   if (renderKey !== lastRenderKey) {
     lastRenderKey = renderKey;
@@ -109,7 +126,11 @@ function drawList(entries) {
     details.className = 'details';
 
     const wait = document.createElement('span');
-    if (entry.calledAt) {
+    if (entry.ackedAt) {
+      li.classList.add('called', 'on-way');
+      wait.className = 'wait called-text';
+      withIcon(wait, '🏃', 'On the way!');
+    } else if (entry.calledAt) {
       li.classList.add('called');
       wait.className = 'wait called-text';
       withIcon(wait, '🔔', 'Called to the booth!');
@@ -211,6 +232,7 @@ function checkMyTurn(entries) {
   if (!mine || (activeCall && activeCall.calledAt === mine.calledAt)) return;
   activeCall = mine;
   turnName.textContent = mine.name;
+  turnModal.returnValue = '';
   if (!turnModal.open) turnModal.showModal();
   document.title = "🔔 It's your turn! – Paul Houston Massage";
   if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
@@ -218,6 +240,8 @@ function checkMyTurn(entries) {
 }
 
 turnModal.addEventListener('close', () => {
+  // "On my way!" sets returnValue to 'ack'; closing with Escape doesn't send a reply.
+  if (activeCall && turnModal.returnValue === 'ack') sendOnMyWay(activeCall);
   if (activeCall) {
     seenCalls[activeCall.id] = activeCall.calledAt;
     // Only keep acknowledgements for entries that are still ours.
@@ -227,6 +251,20 @@ turnModal.addEventListener('close', () => {
   }
   document.title = pageTitle;
 });
+
+async function sendOnMyWay(entry) {
+  try {
+    const res = await fetch(`/api/waitlist/${entry.id}/ack`, {
+      method: 'POST',
+      headers: { 'X-Remove-Token': myTokens[entry.id] },
+    });
+    if (!res.ok) throw new Error();
+    showMessage("Thanks — Paul knows you're on your way!");
+  } catch {
+    showMessage("Couldn't send your reply, but please head to the booth.", true);
+  }
+  load();
+}
 
 // A short three-note chime. Browsers may block sound until the visitor has
 // tapped the page, so this is a bonus on top of the pop-up and vibration.

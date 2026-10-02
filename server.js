@@ -30,15 +30,27 @@ if (process.env.DATABASE_URL) {
         )`);
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS remove_token TEXT');
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS called_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS acked_at TIMESTAMPTZ');
     },
     async list() {
       const { rows } = await pool.query(
-        'SELECT id, name, joined_at AS "joinedAt", called_at AS "calledAt" FROM waitlist ORDER BY joined_at, id'
+        'SELECT id, name, joined_at AS "joinedAt", called_at AS "calledAt", acked_at AS "ackedAt" FROM waitlist ORDER BY joined_at, id'
       );
       return rows;
     },
     async call(id) {
-      const { rowCount } = await pool.query('UPDATE waitlist SET called_at = NOW() WHERE id = $1', [id]);
+      // A new call clears any earlier "on the way" reply.
+      const { rowCount } = await pool.query(
+        'UPDATE waitlist SET called_at = NOW(), acked_at = NULL WHERE id = $1',
+        [id]
+      );
+      return rowCount > 0;
+    },
+    async ack(id) {
+      const { rowCount } = await pool.query(
+        'UPDATE waitlist SET acked_at = NOW() WHERE id = $1 AND called_at IS NOT NULL',
+        [id]
+      );
       return rowCount > 0;
     },
     async add(name, removeToken) {
@@ -64,15 +76,23 @@ if (process.env.DATABASE_URL) {
   store = {
     async init() {},
     async list() {
-      return entries.map(({ id, name, joinedAt, calledAt }) => ({ id, name, joinedAt, calledAt }));
+      return entries.map(({ id, name, joinedAt, calledAt, ackedAt }) => ({ id, name, joinedAt, calledAt, ackedAt }));
     },
     async call(id) {
       const entry = entries.find((e) => e.id === id);
-      if (entry) entry.calledAt = new Date().toISOString();
-      return Boolean(entry);
+      if (!entry) return false;
+      entry.calledAt = new Date().toISOString();
+      entry.ackedAt = null;
+      return true;
+    },
+    async ack(id) {
+      const entry = entries.find((e) => e.id === id);
+      if (!entry || !entry.calledAt) return false;
+      entry.ackedAt = new Date().toISOString();
+      return true;
     },
     async add(name, removeToken) {
-      const entry = { id: nextId++, name, joinedAt: new Date().toISOString(), calledAt: null, removeToken };
+      const entry = { id: nextId++, name, joinedAt: new Date().toISOString(), calledAt: null, ackedAt: null, removeToken };
       entries.push(entry);
       return { id: entry.id, name, joinedAt: entry.joinedAt };
     },
@@ -97,6 +117,14 @@ function safeEqual(a, b) {
 function isAdmin(req) {
   const given = req.get('X-Admin-Password');
   return Boolean(ADMIN_PASSWORD && given && safeEqual(given, ADMIN_PASSWORD));
+}
+
+// True if the request carries this entry's secret key, undefined if there's no such entry.
+async function ownsEntry(req, id) {
+  const token = await store.getRemoveToken(id);
+  if (token === undefined) return undefined;
+  const given = req.get('X-Remove-Token');
+  return Boolean(token && given && safeEqual(given, token));
 }
 
 app.post('/api/admin/check', (req, res) => {
@@ -129,12 +157,9 @@ app.delete('/api/waitlist/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id.' });
-    const token = await store.getRemoveToken(id);
-    if (token === undefined) return res.status(404).json({ error: 'Not found.' });
-
-    const given = req.get('X-Remove-Token');
-    const ownsEntry = Boolean(token && given && safeEqual(given, token));
-    if (!ownsEntry && !isAdmin(req)) {
+    const owns = await ownsEntry(req, id);
+    if (owns === undefined) return res.status(404).json({ error: 'Not found.' });
+    if (!owns && !isAdmin(req)) {
       return res.status(403).json({ error: 'You can only remove your own name.' });
     }
 
@@ -154,6 +179,22 @@ app.post('/api/waitlist/:id/call', async (req, res, next) => {
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id.' });
     const called = await store.call(id);
     if (!called) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The called person taps "On my way!". Only their own browser (holding the key) can do this.
+app.post('/api/waitlist/:id/ack', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id.' });
+    const owns = await ownsEntry(req, id);
+    if (owns === undefined) return res.status(404).json({ error: 'Not found.' });
+    if (!owns) return res.status(403).json({ error: 'You can only reply for yourself.' });
+    const acked = await store.ack(id);
+    if (!acked) return res.status(409).json({ error: "You haven't been called yet." });
     res.status(204).end();
   } catch (err) {
     next(err);
