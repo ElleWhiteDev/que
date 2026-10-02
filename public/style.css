@@ -323,9 +323,15 @@ form button:active { transform: scale(0.96); }
 }
 
 .waitlist li {
-  display: flex;
+  /* Name on top with the wait time underneath, so the name always gets the full width */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "pos name    actions"
+    "pos details actions";
   align-items: center;
-  gap: 12px;
+  column-gap: 12px;
+  row-gap: 2px;
   padding: 10px 12px;
   border-radius: 12px;
   background: #faf8ff;
@@ -342,12 +348,12 @@ form button:active { transform: scale(0.96); }
 
 .waitlist li.called { background: #eafaf1; }
 
-.called-text { color: var(--green); }
+.wait.called-text { color: var(--green); }
 
 .actions {
+  grid-area: actions;
   display: flex;
   gap: 6px;
-  flex: none;
 }
 
 .call {
@@ -392,7 +398,7 @@ form button:active { transform: scale(0.96); }
 .waitlist li:first-child .position { animation: pulse-glow 2s ease-out infinite; }
 
 .position {
-  flex: none;
+  grid-area: pos;
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -404,23 +410,23 @@ form button:active { transform: scale(0.96); }
 }
 
 .name {
-  flex: 1;
+  grid-area: name;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 1.1rem;
 }
 
 .details {
+  grid-area: details;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
 }
 
 .wait {
   font-weight: 600;
   color: var(--indigo);
-  white-space: nowrap;
 }
 
 .wait.next {
@@ -497,31 +503,12 @@ form button:active { transform: scale(0.96); }
 
 .site-footer a:hover { text-decoration: underline; text-decoration-color: var(--violet); }
 
-/* Phones: put the wait time under the name so names don't get squeezed */
+/* Phones: stack the staff buttons to leave room for the name */
 @media (max-width: 480px) {
-  .waitlist li {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas:
-      "pos name    actions"
-      "pos details actions";
-    column-gap: 12px;
-    row-gap: 2px;
-  }
-  .position { grid-area: pos; }
-  .name { grid-area: name; }
-  .actions {
-    grid-area: actions;
-    flex-direction: column;
-    justify-content: center;
-  }
-  .details {
-    grid-area: details;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: 8px;
-    text-align: left;
+  .actions { flex-direction: column; }
+  .actions button {
+    padding: 5px 10px;
+    font-size: 0.9rem;
   }
 }
 
