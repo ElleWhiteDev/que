@@ -14,14 +14,24 @@
   <header>
     <h1>Paul Houston Massage</h1>
     <p class="subtitle">Wait List</p>
+    <button id="find-me-btn" class="find-me-btn" type="button">📍 Find me</button>
   </header>
+
+  <dialog id="find-me" class="modal" aria-labelledby="find-me-title">
+    <h2 id="find-me-title">Find me</h2>
+    <p>Find me at <strong>Massage Envy</strong> in Hamburg or the <strong>Lexington Healing Arts Academy</strong>.</p>
+    <p>Look to book with <strong>Paul Houston</strong>.</p>
+    <form method="dialog">
+      <button class="close-btn">Close</button>
+    </form>
+  </dialog>
 
   <main>
     <section class="card">
       <h2>Join the wait list</h2>
       <p id="join-wait" class="join-wait"></p>
       <form id="join-form">
-        <input id="name-input" type="text" placeholder="Your name" maxlength="60" autocomplete="name" required />
+        <input id="name-input" type="text" placeholder="Your name" aria-label="Your name" maxlength="60" autocomplete="name" required />
         <button type="submit">Add me</button>
       </form>
       <p id="message" class="message" role="status"></p>

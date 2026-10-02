@@ -107,5 +107,12 @@ form.addEventListener('submit', async (e) => {
   load();
 });
 
+const findMe = document.getElementById('find-me');
+document.getElementById('find-me-btn').addEventListener('click', () => findMe.showModal());
+// Close when clicking the backdrop outside the modal box.
+findMe.addEventListener('click', (e) => {
+  if (e.target === findMe) findMe.close();
+});
+
 load();
 setInterval(load, 10000);
