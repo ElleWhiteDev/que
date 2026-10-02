@@ -297,6 +297,15 @@ form button:hover {
 
 form button:active { transform: scale(0.96); }
 
+.keep-open {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  color: var(--indigo);
+  background: #f3ecff;
+  border-radius: 10px;
+}
+
 .message {
   min-height: 1.2em;
   margin: 10px 0 0;
