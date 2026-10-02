@@ -7,6 +7,8 @@
   --indigo: #5b3cc4;
   --violet: #b14fd8;
   --rainbow: linear-gradient(90deg, var(--red), var(--orange), var(--yellow), var(--green), var(--blue), var(--indigo), var(--violet));
+  /* Wraps back to red so it can scroll forever without a seam */
+  --rainbow-loop: linear-gradient(90deg, var(--red), var(--orange), var(--yellow), var(--green), var(--blue), var(--indigo), var(--violet), var(--red));
   --text: #2b2140;
   --muted: #6d6380;
 }
@@ -25,25 +27,101 @@ body {
     #fffaf3;
 }
 
+/* ---------- Movement ---------- */
+
+@keyframes rainbow-flow {
+  to { background-position: 200% 0; }
+}
+
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes pop-in {
+  0%   { opacity: 0; transform: translateX(-30px) scale(0.9); }
+  60%  { opacity: 1; transform: translateX(6px) scale(1.03); }
+  100% { transform: none; }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); }
+  50%      { opacity: 1; transform: translateY(-30px) scale(1) rotate(180deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.55); }
+  50%      { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@keyframes burst {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
+  to   { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.2) rotate(200deg); }
+}
+
+.flow {
+  background-image: var(--rainbow-loop);
+  background-size: 200% 100%;
+  animation: rainbow-flow 6s linear infinite;
+}
+
+/* Floating sparkles behind everything */
+.sparkles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.sparkle {
+  position: absolute;
+  color: var(--c);
+  font-size: var(--s);
+  opacity: 0;
+  animation: twinkle var(--d) ease-in-out var(--delay) infinite;
+  text-shadow: 0 0 8px var(--c);
+}
+
+/* Sparkle burst when someone joins */
+.burst {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10;
+  color: var(--c);
+  font-size: 18px;
+  text-shadow: 0 0 6px var(--c);
+  animation: burst 0.9s ease-out forwards;
+}
+
+header, main { position: relative; z-index: 1; }
+
 .rainbow-bar {
+  position: relative;
+  z-index: 1;
   height: 10px;
-  background: var(--rainbow);
 }
 
 header {
   text-align: center;
   padding: 40px 16px 16px;
+  animation: float-up 0.7s ease-out both;
 }
 
 h1 {
   margin: 0;
   font-size: clamp(2rem, 7vw, 3.5rem);
   font-weight: 700;
-  background: var(--rainbow);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   line-height: 1.15;
+  filter: drop-shadow(0 2px 6px rgba(177, 79, 216, 0.25));
 }
 
 .subtitle {
@@ -60,14 +138,21 @@ h1 {
   background: #fff;
   color: var(--indigo);
   border: 3px solid transparent;
-  background-image: linear-gradient(#fff, #fff), var(--rainbow);
   background-origin: border-box;
   background-clip: padding-box, border-box;
+  background-image: linear-gradient(#fff, #fff), var(--rainbow-loop);
+  background-size: 100% 100%, 200% 100%;
   border-radius: 999px;
   box-shadow: 0 4px 14px rgba(91, 60, 196, 0.15);
+  animation: find-me-flow 6s linear infinite, bob 3s ease-in-out infinite;
+  transition: box-shadow 0.2s;
 }
 
-.find-me-btn:hover { transform: translateY(-1px); }
+@keyframes find-me-flow {
+  to { background-position: 0 0, 200% 0; }
+}
+
+.find-me-btn:hover { box-shadow: 0 6px 20px rgba(177, 79, 216, 0.35); }
 
 .modal {
   width: min(440px, calc(100vw - 32px));
@@ -87,8 +172,12 @@ h1 {
   position: absolute;
   inset: 0 0 auto 0;
   height: 8px;
-  background: var(--rainbow);
+  background-image: var(--rainbow-loop);
+  background-size: 200% 100%;
+  animation: rainbow-flow 6s linear infinite;
 }
+
+.modal[open] { animation: float-up 0.35s ease-out; }
 
 .modal::backdrop {
   background: rgba(43, 33, 64, 0.45);
@@ -97,7 +186,9 @@ h1 {
 .modal h2 {
   justify-content: center;
   font-size: 1.6rem;
-  background: var(--rainbow);
+  background-image: var(--rainbow-loop);
+  background-size: 200% 100%;
+  animation: rainbow-flow 6s linear infinite;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -132,14 +223,20 @@ main {
   padding: 24px;
   box-shadow: 0 8px 24px rgba(91, 60, 196, 0.12);
   overflow: hidden;
+  animation: float-up 0.7s ease-out both;
 }
+
+.card:nth-child(1) { animation-delay: 0.15s; }
+.card:nth-child(2) { animation-delay: 0.3s; }
 
 .card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
   height: 6px;
-  background: var(--rainbow);
+  background-image: var(--rainbow-loop);
+  background-size: 200% 100%;
+  animation: rainbow-flow 6s linear infinite;
 }
 
 h2 {
@@ -186,12 +283,18 @@ button {
 form button {
   padding: 12px 22px;
   color: #fff;
-  background: var(--rainbow);
+  background-image: var(--rainbow-loop);
   background-size: 200% 100%;
-  transition: background-position 0.4s;
+  animation: rainbow-flow 4s linear infinite;
+  transition: transform 0.15s, box-shadow 0.2s;
 }
 
-form button:hover { background-position: 100% 0; }
+form button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(177, 79, 216, 0.35);
+}
+
+form button:active { transform: scale(0.96); }
 
 .message {
   min-height: 1.2em;
@@ -217,7 +320,17 @@ form button:hover { background-position: 100% 0; }
   border-radius: 12px;
   background: #faf8ff;
   border-left: 6px solid var(--c);
+  transition: transform 0.2s, box-shadow 0.2s;
 }
+
+.waitlist li:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 14px rgba(91, 60, 196, 0.12);
+}
+
+.waitlist li.new { animation: pop-in 0.6s ease-out; }
+
+.waitlist li:first-child .position { animation: pulse-glow 2s ease-out infinite; }
 
 .position {
   flex: none;
@@ -251,7 +364,10 @@ form button:hover { background-position: 100% 0; }
   white-space: nowrap;
 }
 
-.wait.next { color: var(--green); }
+.wait.next {
+  color: var(--green);
+  animation: bob 1.6s ease-in-out infinite;
+}
 
 .time {
   color: var(--muted);
@@ -285,4 +401,59 @@ form button:hover { background-position: 100% 0; }
   margin: 0;
   color: var(--muted);
   text-align: center;
+}
+
+.site-footer {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 0 16px 28px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.site-footer a {
+  font-weight: 600;
+  text-decoration: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-image: var(--rainbow-loop);
+  background-size: 200% 100%;
+  animation: rainbow-flow 6s linear infinite;
+}
+
+.site-footer a:hover { text-decoration: underline; text-decoration-color: var(--violet); }
+
+/* Phones: put the wait time under the name so names don't get squeezed */
+@media (max-width: 480px) {
+  .waitlist li {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "pos name    remove"
+      "pos details remove";
+    column-gap: 12px;
+    row-gap: 2px;
+  }
+  .position { grid-area: pos; }
+  .name { grid-area: name; }
+  .remove { grid-area: remove; }
+  .details {
+    grid-area: details;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 8px;
+    text-align: left;
+  }
+}
+
+/* Calm version for people who have asked their device to reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .sparkles, .burst { display: none; }
 }

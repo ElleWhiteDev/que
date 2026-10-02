@@ -29,11 +29,16 @@ function formatWait(peopleAhead) {
   return `~${parts.join(' ')} wait`;
 }
 
+// Ids already on screen, so only newly joined people get the pop-in animation.
+// Starts as null so the first load doesn't animate everyone at once.
+let seenIds = null;
+
 function render(entries) {
   list.replaceChildren();
   entries.forEach((entry, i) => {
     const li = document.createElement('li');
     li.style.setProperty('--c', `var(${colors[i % colors.length]})`);
+    if (seenIds && !seenIds.has(entry.id)) li.classList.add('new');
 
     const pos = document.createElement('span');
     pos.className = 'position';
@@ -64,6 +69,7 @@ function render(entries) {
     li.append(pos, name, details, remove);
     list.append(li);
   });
+  seenIds = new Set(entries.map((e) => e.id));
   count.textContent = entries.length;
   joinWait.textContent = entries.length
     ? `If you join now: ${formatWait(entries.length)} (${entries.length} ahead of you)`
@@ -100,6 +106,7 @@ form.addEventListener('submit', async (e) => {
   if (res.ok) {
     input.value = '';
     showMessage(`Thanks, ${name}! You're on the list.`);
+    sparkleBurst(form.querySelector('button'));
   } else {
     const { error } = await res.json().catch(() => ({}));
     showMessage(error || 'Could not add your name.', true);
@@ -113,6 +120,54 @@ document.getElementById('find-me-btn').addEventListener('click', () => findMe.sh
 findMe.addEventListener('click', (e) => {
   if (e.target === findMe) findMe.close();
 });
+
+const SPARKLE_CHARS = ['✦', '✧', '★', '✨', '·'];
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function randomColor() {
+  return `var(${colors[Math.floor(Math.random() * colors.length)]})`;
+}
+
+// Twinkling sparkles scattered across the page background.
+function makeSparkles(count) {
+  const layer = document.getElementById('sparkles');
+  for (let i = 0; i < count; i++) {
+    const s = document.createElement('span');
+    s.className = 'sparkle';
+    s.textContent = SPARKLE_CHARS[i % SPARKLE_CHARS.length];
+    s.style.left = `${Math.random() * 100}%`;
+    s.style.top = `${Math.random() * 100}%`;
+    s.style.setProperty('--c', randomColor());
+    s.style.setProperty('--s', `${10 + Math.random() * 16}px`);
+    s.style.setProperty('--d', `${3 + Math.random() * 4}s`);
+    s.style.setProperty('--delay', `${-Math.random() * 7}s`);
+    layer.append(s);
+  }
+}
+
+// A quick shower of sparkles flying out from an element.
+function sparkleBurst(el) {
+  if (reduceMotion) return;
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement('span');
+    s.className = 'burst';
+    s.textContent = SPARKLE_CHARS[i % 3];
+    const angle = (i / 16) * Math.PI * 2;
+    const dist = 50 + Math.random() * 50;
+    s.style.left = `${cx}px`;
+    s.style.top = `${cy}px`;
+    s.style.setProperty('--c', randomColor());
+    s.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    s.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    s.addEventListener('animationend', () => s.remove());
+    document.body.append(s);
+  }
+}
+
+if (!reduceMotion) makeSparkles(window.innerWidth < 600 ? 18 : 32);
 
 load();
 setInterval(load, 10000);
