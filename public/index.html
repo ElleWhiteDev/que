@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Paul Houston Massage – Wait List</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="rainbow-bar"></div>
+
+  <header>
+    <h1>Paul Houston Massage</h1>
+    <p class="subtitle">Wait List</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Join the wait list</h2>
+      <p id="join-wait" class="join-wait"></p>
+      <form id="join-form">
+        <input id="name-input" type="text" placeholder="Your name" maxlength="60" autocomplete="name" required />
+        <button type="submit">Add me</button>
+      </form>
+      <p id="message" class="message" role="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>Currently waiting <span id="count" class="count">0</span></h2>
+      <ol id="waitlist" class="waitlist"></ol>
+      <p id="empty" class="empty">No one is waiting right now 🌈</p>
+      <p class="note">Wait times assume 15 minutes per massage.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

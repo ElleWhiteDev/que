@@ -1,0 +1,16 @@
+{
+  "name": "paul-houston-massage-waitlist",
+  "version": "1.0.0",
+  "description": "Rainbow-themed wait list for Paul Houston Massage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}
