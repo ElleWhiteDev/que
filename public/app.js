@@ -61,11 +61,40 @@ function formatWait(peopleAhead) {
 // Starts as null so the first load doesn't animate everyone at once.
 let seenIds = null;
 
+// Text with a decorative emoji in front that screen readers skip.
+function withIcon(el, icon, text) {
+  const span = document.createElement('span');
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = icon;
+  el.replaceChildren(span, ` ${text}`);
+  return el;
+}
+
+// What the list was last drawn from, so the 4-second refresh only redraws
+// when something changed. Redrawing would otherwise kick keyboard and
+// screen reader users off whatever button they were on.
+let lastRenderKey = '';
+
 function render(entries) {
+  const renderKey = JSON.stringify([entries, Boolean(adminPassword), Object.keys(myTokens)]);
+  if (renderKey !== lastRenderKey) {
+    lastRenderKey = renderKey;
+    drawList(entries);
+  }
+  checkMyTurn(entries);
+}
+
+function drawList(entries) {
+  // Remember which button had focus so it can get it back after redrawing.
+  const focused = document.activeElement?.closest?.('.waitlist button');
+  const refocus = focused && { id: focused.dataset.id, action: focused.dataset.action };
+
   list.replaceChildren();
   entries.forEach((entry, i) => {
     const li = document.createElement('li');
-    li.style.setProperty('--c', `var(${colors[i % colors.length]})`);
+    const color = colors[i % colors.length];
+    li.style.setProperty('--c', `var(${color})`);
+    li.style.setProperty('--cd', `var(${color}-deep)`);
     if (seenIds && !seenIds.has(entry.id)) li.classList.add('new');
 
     const pos = document.createElement('span');
@@ -83,7 +112,7 @@ function render(entries) {
     if (entry.calledAt) {
       li.classList.add('called');
       wait.className = 'wait called-text';
-      wait.textContent = '🔔 Called to the booth!';
+      withIcon(wait, '🔔', 'Called to the booth!');
     } else {
       wait.className = i === 0 ? 'wait next' : 'wait';
       wait.textContent = formatWait(i);
@@ -111,7 +140,10 @@ function render(entries) {
     if (adminPassword) {
       const call = document.createElement('button');
       call.className = 'call';
-      call.textContent = entry.calledAt ? '🔔 Call again' : '🔔 Call';
+      call.dataset.id = entry.id;
+      call.dataset.action = 'call';
+      withIcon(call, '🔔', entry.calledAt ? 'Call again' : 'Call');
+      call.setAttribute('aria-label', entry.calledAt ? `Call ${entry.name} again` : `Call ${entry.name}`);
       call.addEventListener('click', () => callEntry(entry));
       actions.append(call);
     }
@@ -119,7 +151,10 @@ function render(entries) {
     if (isMine || adminPassword) {
       const remove = document.createElement('button');
       remove.className = 'remove';
+      remove.dataset.id = entry.id;
+      remove.dataset.action = 'remove';
       remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove ${entry.name}`);
       remove.addEventListener('click', () => removeEntry(entry));
       actions.append(remove);
     }
@@ -138,12 +173,19 @@ function render(entries) {
     myTokens = stillHere;
     writeStore('waitlist-tokens', myTokens);
   }
-  checkMyTurn(entries);
   count.textContent = entries.length;
   joinWait.textContent = entries.length
     ? `If you join now: ${formatWait(entries.length)} (${entries.length} ahead of you)`
     : 'No wait — you would be up next!';
   empty.hidden = entries.length > 0;
+
+  if (refocus) {
+    const again = list.querySelector(
+      `button[data-id="${refocus.id}"][data-action="${refocus.action}"]`
+    );
+    // If that person was removed, land on the list heading instead of the page top.
+    (again || list.closest('section').querySelector('h2')).focus();
+  }
 }
 
 async function load() {
@@ -299,7 +341,28 @@ staffBtn.addEventListener('click', async () => {
 updateStaffButton();
 
 const SPARKLE_CHARS = ['✦', '✧', '★'];
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- Pause / play animations ----------
+// Starts paused for people whose device asks for reduced motion; anyone can toggle it.
+// The class is first set by the small script in <head> so nothing moves before this runs.
+const motionBtn = document.getElementById('motion-btn');
+
+function motionOn() {
+  return !document.documentElement.classList.contains('no-motion');
+}
+
+function updateMotionButton() {
+  motionBtn.textContent = motionOn() ? 'Pause animations' : 'Play animations';
+  motionBtn.setAttribute('aria-pressed', String(!motionOn()));
+}
+
+motionBtn.addEventListener('click', () => {
+  const turnOn = !motionOn();
+  document.documentElement.classList.toggle('no-motion', !turnOn);
+  writeStore('waitlist-motion', turnOn ? 'on' : 'off');
+  if (turnOn && !document.querySelector('.sparkle')) makeSparkles(sparkleCount());
+  updateMotionButton();
+});
 
 function randomColor() {
   return `var(${colors[Math.floor(Math.random() * colors.length)]})`;
@@ -325,13 +388,14 @@ function makeSparkles(count) {
 
 // A quick shower of sparkles flying out from an element.
 function sparkleBurst(el) {
-  if (reduceMotion) return;
+  if (!motionOn()) return;
   const rect = el.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
   for (let i = 0; i < 16; i++) {
     const s = document.createElement('span');
     s.className = 'burst';
+    s.setAttribute('aria-hidden', 'true');
     s.textContent = SPARKLE_CHARS[i % 3];
     const angle = (i / 16) * Math.PI * 2;
     const dist = 50 + Math.random() * 50;
@@ -345,7 +409,12 @@ function sparkleBurst(el) {
   }
 }
 
-if (!reduceMotion) makeSparkles(window.innerWidth < 600 ? 14 : 26);
+function sparkleCount() {
+  return window.innerWidth < 600 ? 14 : 26;
+}
+
+updateMotionButton();
+if (motionOn()) makeSparkles(sparkleCount());
 
 load();
 // Check often so a called person sees their alert within a few seconds,

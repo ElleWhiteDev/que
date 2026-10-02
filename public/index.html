@@ -10,6 +10,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    // Decide before anything draws whether animations should run: the visitor's
+    // saved choice wins, otherwise follow their device's reduce-motion setting.
+    (function () {
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem('waitlist-motion')); } catch (e) {}
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (saved === 'off' || (saved !== 'on' && reduce)) {
+        document.documentElement.classList.add('no-motion');
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="sparkles" id="sparkles" aria-hidden="true"></div>
@@ -18,13 +30,13 @@
   <header>
     <h1 class="flow">Paul Houston Massage</h1>
     <p class="subtitle">Wait List</p>
-    <button id="find-me-btn" class="find-me-btn" type="button">📍 Find me</button>
+    <button id="find-me-btn" class="find-me-btn" type="button"><span aria-hidden="true">📍</span> Find me</button>
   </header>
 
-  <dialog id="your-turn" class="modal turn-modal" aria-labelledby="your-turn-title">
+  <dialog id="your-turn" class="modal turn-modal" role="alertdialog" aria-labelledby="your-turn-title" aria-describedby="your-turn-desc">
     <div class="turn-bell" aria-hidden="true">🔔</div>
     <h2 id="your-turn-title">It's your turn!</h2>
-    <p><strong id="your-turn-name"></strong>, please come to the massage booth now.</p>
+    <p id="your-turn-desc"><strong id="your-turn-name"></strong>, please come to the massage booth now.</p>
     <form method="dialog">
       <button class="close-btn">On my way!</button>
     </form>
@@ -43,25 +55,29 @@
     <section class="card">
       <h2>Join the wait list</h2>
       <p id="join-wait" class="join-wait"></p>
+      <label for="name-input" class="field-label">Your name</label>
       <form id="join-form">
-        <input id="name-input" type="text" placeholder="Your name" aria-label="Your name" maxlength="60" autocomplete="name" required />
+        <input id="name-input" type="text" maxlength="60" autocomplete="name" required />
         <button type="submit">Add me</button>
       </form>
-      <p class="keep-open">🔔 Keep this page open — we'll alert you here when it's your turn.</p>
+      <p class="keep-open"><span aria-hidden="true">🔔</span> Keep this page open — we'll alert you here when it's your turn.</p>
       <p id="message" class="message" role="status"></p>
     </section>
 
     <section class="card">
-      <h2>Currently waiting <span id="count" class="count">0</span></h2>
+      <h2 tabindex="-1">Currently waiting <span id="count" class="count">0</span><span class="visually-hidden"> people</span></h2>
       <ol id="waitlist" class="waitlist"></ol>
-      <p id="empty" class="empty">No one is waiting right now 🌈</p>
+      <p id="empty" class="empty">No one is waiting right now <span aria-hidden="true">🌈</span></p>
       <p class="note">Wait times assume 15 minutes per massage.</p>
     </section>
   </main>
 
   <footer class="site-footer">
-    Made by <a href="https://ellewhite.dev" target="_blank" rel="noopener">ellewhitedev</a>
-    <button id="staff-btn" class="staff-btn" type="button">Staff</button>
+    Made by <a href="https://ellewhite.dev" target="_blank" rel="noopener">ellewhitedev<span class="visually-hidden"> (opens in a new tab)</span></a>
+    <span class="footer-buttons">
+      <button id="motion-btn" class="staff-btn" type="button" aria-pressed="false">Pause animations</button>
+      <button id="staff-btn" class="staff-btn" type="button">Staff</button>
+    </span>
   </footer>
 
   <script src="app.js"></script>
