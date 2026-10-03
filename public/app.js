@@ -220,51 +220,71 @@ async function load() {
 }
 
 // ---------- Lunch break ----------
-// Staff can start a 30-minute lunch. While it's on, nobody can join the list.
+// Staff can plan a 30-minute lunch that starts once everyone already waiting has
+// had their massage. From then until lunch ends, nobody new can join the list.
 
 const lunchNotice = document.getElementById('lunch-notice');
 const lunchBtn = document.getElementById('lunch-btn');
 const addBtn = form.querySelector('button');
-let lunchUntil = null;
+let lunch = { startsAt: null, until: null };
 
 async function loadLunch() {
   try {
     const res = await fetch('/api/lunch');
     if (!res.ok) throw new Error();
-    ({ until: lunchUntil } = await res.json());
+    lunch = await res.json();
   } catch {
     // Keep showing whatever we knew last.
   }
   renderLunch();
 }
 
+// 'off', 'soon' (finishing the people in line first) or 'now' (on lunch).
+// Moves along on its own as the times pass, even between checks.
+function lunchPhase() {
+  const now = new Date();
+  if (!lunch.until || new Date(lunch.until) <= now) return 'off';
+  return new Date(lunch.startsAt) > now ? 'soon' : 'now';
+}
+
 function renderLunch() {
-  // Ends on its own once the time passes, even between checks.
-  const onLunch = Boolean(lunchUntil && new Date(lunchUntil) > new Date());
-  const text = onLunch ? `We're on lunch! Back at ${formatTime(lunchUntil)} — please check back then.` : '';
+  const phase = lunchPhase();
+  const closed = phase !== 'off';
+  const text = {
+    off: '',
+    soon: `The list is closed — lunch break ${formatTime(lunch.startsAt)}–${formatTime(lunch.until)} after everyone waiting. Join again from ${formatTime(lunch.until)}.`,
+    now: `We're on lunch! Back at ${formatTime(lunch.until)} — please check back then.`,
+  }[phase];
   // Only touch the page when something changed, so screen readers aren't spammed.
   if (lunchNotice.dataset.text !== text) {
     lunchNotice.dataset.text = text;
-    if (onLunch) withIcon(lunchNotice, '🥪', text);
-    lunchNotice.hidden = !onLunch;
+    if (closed) withIcon(lunchNotice, '🥪', text);
+    lunchNotice.hidden = !closed;
   }
-  input.disabled = onLunch;
-  addBtn.disabled = onLunch;
-  addBtn.textContent = onLunch ? 'On lunch' : 'Add me';
+  // "If you join now…" doesn't apply while joining is closed.
+  joinWait.hidden = closed;
+  input.disabled = closed;
+  addBtn.disabled = closed;
+  addBtn.textContent = closed ? 'Closed for lunch' : 'Add me';
 
   lunchBtn.hidden = !adminPassword;
-  lunchBtn.textContent = onLunch ? 'Back from lunch' : 'Going to lunch (30 min)';
+  lunchBtn.textContent = { off: 'Going to lunch (30 min)', soon: 'Cancel lunch', now: 'Back from lunch' }[phase];
 }
 
 lunchBtn.addEventListener('click', async () => {
-  const onLunch = Boolean(lunchUntil && new Date(lunchUntil) > new Date());
+  const phase = lunchPhase();
   const res = await fetch('/api/lunch', {
-    method: onLunch ? 'DELETE' : 'POST',
+    method: phase === 'off' ? 'POST' : 'DELETE',
     headers: { 'X-Admin-Password': adminPassword },
   });
   if (res.ok) {
-    lunchUntil = onLunch ? null : (await res.json()).until;
-    showMessage(onLunch ? 'Welcome back — people can join again.' : `Enjoy lunch! Joining is paused until ${formatTime(lunchUntil)}.`);
+    if (phase === 'off') {
+      lunch = await res.json();
+      showMessage(`Lunch is ${formatTime(lunch.startsAt)}–${formatTime(lunch.until)}, after everyone waiting. The list is closed until then.`);
+    } else {
+      lunch = { startsAt: null, until: null };
+      showMessage(phase === 'now' ? 'Welcome back — people can join again.' : 'Lunch cancelled — people can join again.');
+    }
   } else {
     const { error } = await res.json().catch(() => ({}));
     showMessage(error || 'Could not change the lunch setting.', true);

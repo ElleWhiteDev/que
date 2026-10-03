@@ -5,6 +5,8 @@ const path = require('path');
 // Staff password lets Paul remove anyone. Unset means nobody can remove other people.
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const LUNCH_MINUTES = 30;
+// Same as MINUTES_PER_MASSAGE in public/app.js.
+const MINUTES_PER_MASSAGE = 15;
 
 const app = express();
 app.use(express.json());
@@ -32,20 +34,26 @@ if (process.env.DATABASE_URL) {
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS remove_token TEXT');
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS called_at TIMESTAMPTZ');
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS acked_at TIMESTAMPTZ');
-      // A single row holding when the current lunch break ends (NULL when not on lunch).
+      // A single row holding when the current lunch break starts and ends (NULL when none is planned).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS lunch (
           id INT PRIMARY KEY CHECK (id = 1),
           until TIMESTAMPTZ
         )`);
+      await pool.query('ALTER TABLE lunch ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ');
       await pool.query('INSERT INTO lunch (id, until) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING');
     },
-    async getLunchUntil() {
-      const { rows } = await pool.query('SELECT until FROM lunch WHERE id = 1');
-      return rows[0]?.until ? rows[0].until.toISOString() : null;
+    async getLunch() {
+      const { rows } = await pool.query('SELECT starts_at, until FROM lunch WHERE id = 1');
+      const row = rows[0];
+      if (!row?.until) return null;
+      return { startsAt: (row.starts_at || row.until).toISOString(), until: row.until.toISOString() };
     },
-    async setLunchUntil(until) {
-      await pool.query('UPDATE lunch SET until = $1 WHERE id = 1', [until]);
+    async setLunch(lunch) {
+      await pool.query('UPDATE lunch SET starts_at = $1, until = $2 WHERE id = 1', [
+        lunch?.startsAt ?? null,
+        lunch?.until ?? null,
+      ]);
     },
     async list() {
       const { rows } = await pool.query(
@@ -87,15 +95,15 @@ if (process.env.DATABASE_URL) {
 } else {
   let entries = [];
   let nextId = 1;
-  let lunchUntil = null;
+  let lunch = null;
 
   store = {
     async init() {},
-    async getLunchUntil() {
-      return lunchUntil;
+    async getLunch() {
+      return lunch;
     },
-    async setLunchUntil(until) {
-      lunchUntil = until;
+    async setLunch(value) {
+      lunch = value;
     },
     async list() {
       return entries.map(({ id, name, joinedAt, calledAt, ackedAt }) => ({ id, name, joinedAt, calledAt, ackedAt }));
@@ -162,37 +170,45 @@ app.get('/api/waitlist', async (req, res, next) => {
   }
 });
 
-// The end of the current lunch break, or null. A break that has run out counts as over.
-async function activeLunchUntil() {
-  const until = await store.getLunchUntil();
-  return until && new Date(until) > new Date() ? until : null;
+// The planned or current lunch break as { startsAt, until }, or null.
+// A break that has run out counts as over.
+async function activeLunch() {
+  const lunch = await store.getLunch();
+  return lunch && new Date(lunch.until) > new Date() ? lunch : null;
 }
 
 app.get('/api/lunch', async (req, res, next) => {
   try {
-    res.json({ until: await activeLunchUntil() });
+    const lunch = await activeLunch();
+    res.json({ startsAt: lunch?.startsAt ?? null, until: lunch?.until ?? null });
   } catch (err) {
     next(err);
   }
 });
 
-// Staff only: start a 30-minute lunch break. Nobody can join until it ends.
+// Staff only: plan a 30-minute lunch break that starts once everyone already
+// waiting has had their massage. Nobody new can join from now until it ends.
 app.post('/api/lunch', async (req, res, next) => {
   try {
     if (!isAdmin(req)) return res.status(403).json({ error: 'Staff only.' });
-    const until = new Date(Date.now() + LUNCH_MINUTES * 60 * 1000).toISOString();
-    await store.setLunchUntil(until);
-    res.json({ until });
+    const waiting = (await store.list()).length;
+    const start = Date.now() + waiting * MINUTES_PER_MASSAGE * 60 * 1000;
+    const lunch = {
+      startsAt: new Date(start).toISOString(),
+      until: new Date(start + LUNCH_MINUTES * 60 * 1000).toISOString(),
+    };
+    await store.setLunch(lunch);
+    res.json(lunch);
   } catch (err) {
     next(err);
   }
 });
 
-// Staff only: back from lunch early.
+// Staff only: cancel the lunch break or come back early.
 app.delete('/api/lunch', async (req, res, next) => {
   try {
     if (!isAdmin(req)) return res.status(403).json({ error: 'Staff only.' });
-    await store.setLunchUntil(null);
+    await store.setLunch(null);
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -201,8 +217,8 @@ app.delete('/api/lunch', async (req, res, next) => {
 
 app.post('/api/waitlist', async (req, res, next) => {
   try {
-    if (await activeLunchUntil()) {
-      return res.status(409).json({ error: "We're on lunch — please check back soon!" });
+    if (await activeLunch()) {
+      return res.status(409).json({ error: "The list is closed for lunch — please check back soon!" });
     }
     const name = String(req.body?.name ?? '').trim().slice(0, 60);
     if (!name) return res.status(400).json({ error: 'Please enter a name.' });
