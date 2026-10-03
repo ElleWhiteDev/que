@@ -47,7 +47,9 @@ if (process.env.DATABASE_URL) {
       const { rows } = await pool.query('SELECT starts_at, until FROM lunch WHERE id = 1');
       const row = rows[0];
       if (!row?.until) return null;
-      return { startsAt: (row.starts_at || row.until).toISOString(), until: row.until.toISOString() };
+      // Lunches saved before starts_at existed began LUNCH_MINUTES before they end.
+      const startsAt = row.starts_at || new Date(row.until.getTime() - LUNCH_MINUTES * 60 * 1000);
+      return { startsAt: startsAt.toISOString(), until: row.until.toISOString() };
     },
     async setLunch(lunch) {
       await pool.query('UPDATE lunch SET starts_at = $1, until = $2 WHERE id = 1', [
