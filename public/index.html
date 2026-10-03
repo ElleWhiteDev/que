@@ -55,11 +55,13 @@
     <section class="card">
       <h2>Join the wait list</h2>
       <p id="join-wait" class="join-wait"></p>
+      <p id="lunch-notice" class="lunch-notice" hidden></p>
       <label for="name-input" class="field-label">Your name</label>
       <form id="join-form">
         <input id="name-input" type="text" maxlength="60" autocomplete="name" required />
         <button type="submit">Add me</button>
       </form>
+      <button id="lunch-btn" class="lunch-btn" type="button" hidden></button>
       <p class="keep-open"><span aria-hidden="true">🔔</span> Keep this page open — we'll alert you here when it's your turn.</p>
       <p id="message" class="message" role="status"></p>
     </section>

@@ -347,6 +347,42 @@ form button:hover {
 
 form button:active { transform: scale(0.96); }
 
+/* On lunch: the join form is greyed out and can't be used */
+form button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+form button:disabled {
+  background-image: none;
+  background-color: var(--muted);
+  animation: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.lunch-notice {
+  margin: -4px 0 14px;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: var(--orange-deep);
+  background: #fff3e0;
+  border-radius: 10px;
+}
+
+/* Staff only */
+.lunch-btn {
+  margin-top: 12px;
+  min-height: 40px;
+  padding: 8px 16px;
+  color: var(--orange-deep);
+  background: #fff3e0;
+  border: 2px solid var(--orange);
+}
+
+.lunch-btn:hover { background: #ffe6c2; }
+
 .keep-open {
   margin: 12px 0 0;
   padding: 8px 12px;

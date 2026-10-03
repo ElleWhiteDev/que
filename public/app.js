@@ -216,7 +216,61 @@ async function load() {
   } catch {
     showMessage('Could not load the wait list.', true);
   }
+  loadLunch();
 }
+
+// ---------- Lunch break ----------
+// Staff can start a 30-minute lunch. While it's on, nobody can join the list.
+
+const lunchNotice = document.getElementById('lunch-notice');
+const lunchBtn = document.getElementById('lunch-btn');
+const addBtn = form.querySelector('button');
+let lunchUntil = null;
+
+async function loadLunch() {
+  try {
+    const res = await fetch('/api/lunch');
+    if (!res.ok) throw new Error();
+    ({ until: lunchUntil } = await res.json());
+  } catch {
+    // Keep showing whatever we knew last.
+  }
+  renderLunch();
+}
+
+function renderLunch() {
+  // Ends on its own once the time passes, even between checks.
+  const onLunch = Boolean(lunchUntil && new Date(lunchUntil) > new Date());
+  const text = onLunch ? `We're on lunch! Back at ${formatTime(lunchUntil)} — please check back then.` : '';
+  // Only touch the page when something changed, so screen readers aren't spammed.
+  if (lunchNotice.dataset.text !== text) {
+    lunchNotice.dataset.text = text;
+    if (onLunch) withIcon(lunchNotice, '🥪', text);
+    lunchNotice.hidden = !onLunch;
+  }
+  input.disabled = onLunch;
+  addBtn.disabled = onLunch;
+  addBtn.textContent = onLunch ? 'On lunch' : 'Add me';
+
+  lunchBtn.hidden = !adminPassword;
+  lunchBtn.textContent = onLunch ? 'Back from lunch' : 'Going to lunch (30 min)';
+}
+
+lunchBtn.addEventListener('click', async () => {
+  const onLunch = Boolean(lunchUntil && new Date(lunchUntil) > new Date());
+  const res = await fetch('/api/lunch', {
+    method: onLunch ? 'DELETE' : 'POST',
+    headers: { 'X-Admin-Password': adminPassword },
+  });
+  if (res.ok) {
+    lunchUntil = onLunch ? null : (await res.json()).until;
+    showMessage(onLunch ? 'Welcome back — people can join again.' : `Enjoy lunch! Joining is paused until ${formatTime(lunchUntil)}.`);
+  } else {
+    const { error } = await res.json().catch(() => ({}));
+    showMessage(error || 'Could not change the lunch setting.', true);
+  }
+  renderLunch();
+});
 
 // ---------- "It's your turn" alert ----------
 
@@ -357,6 +411,7 @@ staffBtn.addEventListener('click', async () => {
   if (adminPassword) {
     adminPassword = null;
     writeStore('waitlist-admin', null);
+    renderLunch();
   } else {
     const password = prompt('Staff password');
     if (!password) return;

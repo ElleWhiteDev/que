@@ -4,6 +4,7 @@ const path = require('path');
 
 // Staff password lets Paul remove anyone. Unset means nobody can remove other people.
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const LUNCH_MINUTES = 30;
 
 const app = express();
 app.use(express.json());
@@ -31,6 +32,20 @@ if (process.env.DATABASE_URL) {
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS remove_token TEXT');
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS called_at TIMESTAMPTZ');
       await pool.query('ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS acked_at TIMESTAMPTZ');
+      // A single row holding when the current lunch break ends (NULL when not on lunch).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS lunch (
+          id INT PRIMARY KEY CHECK (id = 1),
+          until TIMESTAMPTZ
+        )`);
+      await pool.query('INSERT INTO lunch (id, until) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING');
+    },
+    async getLunchUntil() {
+      const { rows } = await pool.query('SELECT until FROM lunch WHERE id = 1');
+      return rows[0]?.until ? rows[0].until.toISOString() : null;
+    },
+    async setLunchUntil(until) {
+      await pool.query('UPDATE lunch SET until = $1 WHERE id = 1', [until]);
     },
     async list() {
       const { rows } = await pool.query(
@@ -72,9 +87,16 @@ if (process.env.DATABASE_URL) {
 } else {
   let entries = [];
   let nextId = 1;
+  let lunchUntil = null;
 
   store = {
     async init() {},
+    async getLunchUntil() {
+      return lunchUntil;
+    },
+    async setLunchUntil(until) {
+      lunchUntil = until;
+    },
     async list() {
       return entries.map(({ id, name, joinedAt, calledAt, ackedAt }) => ({ id, name, joinedAt, calledAt, ackedAt }));
     },
@@ -140,8 +162,48 @@ app.get('/api/waitlist', async (req, res, next) => {
   }
 });
 
+// The end of the current lunch break, or null. A break that has run out counts as over.
+async function activeLunchUntil() {
+  const until = await store.getLunchUntil();
+  return until && new Date(until) > new Date() ? until : null;
+}
+
+app.get('/api/lunch', async (req, res, next) => {
+  try {
+    res.json({ until: await activeLunchUntil() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Staff only: start a 30-minute lunch break. Nobody can join until it ends.
+app.post('/api/lunch', async (req, res, next) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Staff only.' });
+    const until = new Date(Date.now() + LUNCH_MINUTES * 60 * 1000).toISOString();
+    await store.setLunchUntil(until);
+    res.json({ until });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Staff only: back from lunch early.
+app.delete('/api/lunch', async (req, res, next) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Staff only.' });
+    await store.setLunchUntil(null);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.post('/api/waitlist', async (req, res, next) => {
   try {
+    if (await activeLunchUntil()) {
+      return res.status(409).json({ error: "We're on lunch — please check back soon!" });
+    }
     const name = String(req.body?.name ?? '').trim().slice(0, 60);
     if (!name) return res.status(400).json({ error: 'Please enter a name.' });
     // The token is only ever sent to the person who joined; the public list never includes it.
